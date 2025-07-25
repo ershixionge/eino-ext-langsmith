@@ -17,7 +17,12 @@
 package langsmith
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"time"
 )
 
@@ -26,6 +31,11 @@ type Langsmith interface {
 	CreateRun(ctx context.Context, run *Run) error
 	UpdateRun(ctx context.Context, runID string, patch *RunPatch) error
 }
+
+const (
+	// DefaultLangsmithAPIURL 是 Langsmith API 的默认地址
+	DefaultLangsmithAPIURL = "https://api.smith.langchain.com"
+)
 
 // RunType 定义了 run 的类型
 type RunType string
@@ -56,20 +66,91 @@ type Run struct {
 // RunPatch 用于更新一个 run
 type RunPatch struct {
 	EndTime *time.Time             `json:"end_time,omitempty"`
+	Inputs  map[string]interface{} `json:"inputs,omitempty"`
 	Outputs map[string]interface{} `json:"outputs,omitempty"`
 	Error   *string                `json:"error,omitempty"`
 	Extra   map[string]interface{} `json:"extra,omitempty"`
 }
 
-// NewLangsmith 是一个占位符，实际实现中需要连接 Langsmith API
-// 这里我们返回一个 nil 客户端，因为在测试中我们会 mock 它
+// langsmithClient 实现了 Langsmith 接口
+type langsmithClient struct {
+	apiKey     string
+	baseURL    string
+	httpClient *http.Client
+}
+
+// NewLangsmith 创建一个新的 Langsmith 客户端
 func NewLangsmith(apiKey, apiUrl string) Langsmith {
-	// 实际的实现会在这里初始化一个 HTTP 客户端来调用 Langsmith API
-	// 例如:
-	// return &langsmithClient{
-	//     apiKey: apiKey,
-	//     baseURL: apiUrl,
-	//     httpClient: &http.Client{Timeout: 10 * time.Second},
-	// }
+	if apiUrl == "" {
+		apiUrl = DefaultLangsmithAPIURL
+	}
+	return &langsmithClient{
+		apiKey:     apiKey,
+		baseURL:    apiUrl,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// CreateRun 在 Langsmith 中创建一个新的 run
+func (c *langsmithClient) CreateRun(ctx context.Context, run *Run) error {
+	jsonData, err := json.Marshal(run)
+	if err != nil {
+		return fmt.Errorf("failed to marshal run data: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/runs", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to create run, status: %s, body: %s", resp.Status, string(body))
+	}
+
+	// 将返回的 run 数据解码回传入的 run 对象，这样调用者可以获取到 ID 等服务端生成的数据
+	if err := json.NewDecoder(resp.Body).Decode(run); err != nil {
+		return fmt.Errorf("failed to decode response body: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateRun 更新 Langsmith 中的一个 run
+func (c *langsmithClient) UpdateRun(ctx context.Context, runID string, patch *RunPatch) error {
+	jsonData, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("failed to marshal patch data: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/runs/%s", c.baseURL, runID)
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update run, status: %s, body: %s", resp.Status, string(body))
+	}
+
 	return nil
 }
