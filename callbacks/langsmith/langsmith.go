@@ -209,7 +209,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		TraceID:   state.traceID,
 		Name:      runInfoToName(info),
 		RunType:   runInfoToRunType(info),
-		StartTime: time.Now(),
+		StartTime: time.Now().UTC(),
 		//Inputs:      map[string]interface{}{"stream_inputs": inMessage}, // 初始为空
 		SessionName: opts.SessionName,
 		//Extra:       extra,
@@ -322,7 +322,7 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			extra["model_usage"] = usage
 		}
 
-		endTime := time.Now()
+		endTime := time.Now().UTC()
 		patch := &RunPatch{
 			EndTime: &endTime,
 			Outputs: map[string]interface{}{"stream_outputs": outMessage},
