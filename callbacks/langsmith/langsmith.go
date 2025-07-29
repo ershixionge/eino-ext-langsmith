@@ -203,7 +203,24 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	if state.traceID == "" {
 		state.traceID = runID
 	}
-	var parentDottedOrder string
+
+	run := &Run{
+		ID:        runID,
+		TraceID:   state.traceID,
+		Name:      runInfoToName(info),
+		RunType:   runInfoToRunType(info),
+		StartTime: time.Now(),
+		//Inputs:      map[string]interface{}{"stream_inputs": inMessage}, // 初始为空
+		SessionName: opts.SessionName,
+		//Extra:       extra,
+	}
+	nowTime := run.StartTime.Format("20060102T150405000000")
+	if state.parentDottedOrder != "" {
+		run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.parentDottedOrder, nowTime, runID)
+	} else {
+		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
+	}
+
 	// 启动一个 goroutine 来处理输入流
 	go func() {
 		defer func() {
@@ -230,30 +247,22 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			log.Printf("extract stream model input error: %v, runinfo: %+v", err_, info)
 			return
 		}
-		extra["model_conf"] = modelConf
-		run := &Run{
-			ID:          runID,
-			TraceID:     state.traceID,
-			Name:        runInfoToName(info),
-			RunType:     runInfoToRunType(info),
-			StartTime:   time.Now(),
-			Inputs:      map[string]interface{}{"stream_inputs": inMessage}, // 初始为空
-			SessionName: opts.SessionName,
-			Extra:       extra,
+		if extra == nil {
+			extra = map[string]interface{}{}
 		}
+		if modelConf != nil {
+			extra["model_conf"] = modelConf
+		}
+
 		if opts.ReferenceExampleID != "" {
 			run.ReferenceExampleID = &opts.ReferenceExampleID
 		}
 		if state.parentRunID != "" {
 			run.ParentRunID = &state.parentRunID
 		}
-		nowTime := run.StartTime.Format("20060102T150405000000")
-		if state.parentDottedOrder != "" {
-			run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.parentDottedOrder, nowTime, runID)
-		} else {
-			run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
-		}
-		parentDottedOrder = run.DottedOrder
+
+		run.Inputs = map[string]interface{}{"stream_inputs": inMessage}
+		run.Extra = extra
 		err := c.cli.CreateRun(ctx, run)
 		if err != nil {
 			log.Printf("[langsmith] failed to create run for stream: %v", err)
@@ -263,7 +272,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	newState := &langsmithState{
 		traceID:           state.traceID,
 		parentRunID:       runID,
-		parentDottedOrder: parentDottedOrder,
+		parentDottedOrder: run.DottedOrder,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
@@ -306,7 +315,12 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			log.Printf("extract stream model output error: %v, runinfo: %+v", err_, info)
 			return
 		}
-		extra["model_usage"] = usage
+		if extra == nil {
+			extra = map[string]interface{}{}
+		}
+		if usage != nil {
+			extra["model_usage"] = usage
+		}
 
 		endTime := time.Now()
 		patch := &RunPatch{
