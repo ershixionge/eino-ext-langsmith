@@ -200,7 +200,10 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	if opts == nil {
 		opts = &traceOptions{}
 	}
-
+	if state.traceID == "" {
+		state.traceID = runID
+	}
+	var parentDottedOrder string
 	// 启动一个 goroutine 来处理输入流
 	go func() {
 		defer func() {
@@ -244,7 +247,13 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		if state.parentRunID != "" {
 			run.ParentRunID = &state.parentRunID
 		}
-
+		nowTime := run.StartTime.Format("20060102T150405000000")
+		if state.parentDottedOrder != "" {
+			run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.parentDottedOrder, nowTime, runID)
+		} else {
+			run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
+		}
+		parentDottedOrder = run.DottedOrder
 		err := c.cli.CreateRun(ctx, run)
 		if err != nil {
 			log.Printf("[langsmith] failed to create run for stream: %v", err)
@@ -252,8 +261,9 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	}()
 
 	newState := &langsmithState{
-		traceID:     state.traceID,
-		parentRunID: runID,
+		traceID:           state.traceID,
+		parentRunID:       runID,
+		parentDottedOrder: parentDottedOrder,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
