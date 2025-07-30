@@ -133,7 +133,7 @@ func (cm *responsesAPIChatModel) Stream(ctx context.Context, input []*schema.Mes
 		}()
 
 		cm.receivedStreamResponse(streamResp, config, sw)
-		
+
 	}()
 
 	ctx, nsr := callbacks.OnEndWithStreamOutput(ctx, schema.StreamReaderWithConvert(sr,
@@ -622,7 +622,7 @@ func (cm *responsesAPIChatModel) toOpenaiMultiModalContent(msg *schema.Message) 
 func (cm *responsesAPIChatModel) injectTools(req responses.ResponseNewParams, optTools []*schema.ToolInfo) (responses.ResponseNewParams, error) {
 	tools := cm.tools
 
-	if len(optTools) > 0 {
+	if optTools != nil {
 		var err error
 		if tools, err = cm.toTools(optTools); err != nil {
 			return req, err
