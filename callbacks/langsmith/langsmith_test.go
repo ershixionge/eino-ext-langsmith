@@ -18,121 +18,155 @@ package langsmith
 
 import (
 	"context"
-	"github.com/ershixionge/eino-ext-langsmith/callbacks/langsmith/mock"
-	"strings"
+	"errors"
 	"testing"
 	"time"
 
-	"github.com/bytedance/mockey"
 	"github.com/cloudwego/eino/callbacks"
-	"github.com/cloudwego/eino/components"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-// TestLangsmithCallbackDemo 演示了如何集成和使用 Langsmith 回调
-func TestLangsmithCallbackDemo(t *testing.T) {
-	// 1. 初始化 mock 控制器和 mock 客户端
-	ctrl := gomock.NewController(t)
-	mockClient := mock.NewMockLangsmith(ctrl)
-
-	// 2. 使用 mockey 来 patch NewLangsmithHandler 的创建过程，使其返回我们的 mock 客户端
-	// 这样我们就可以在不实际调用 Langsmith API 的情况下进行测试
-	mockey.PatchConvey("Test Langsmith Callback Demo", t, func() {
-		mockey.Mock(NewLangsmith).Return(mockClient).Build()
-
-		// 3. 创建 Langsmith 回调处理器
-		cbh, err := NewLangsmithHandler(&Config{
-			APIKey: "test-key",
-		})
-		assert.NoError(t, err)
-
-		// 4. 将处理器设置为 Eino 的全局回调
-		callbacks.InitCallbackHandlers([]callbacks.Handler{cbh})
-
-		// 5. (可选) 使用 SetTrace 在 context 中设置 Trace 级别的属性
-		ctx := context.Background()
-		ctx = SetTrace(ctx,
-			WithMetadata(map[string]interface{}{"user": "test-user"}),
-		)
-
-		// 6. 构建一个 Eino Graph
-		g := compose.NewGraph[string, string]()
-		_ = g.AddLambdaNode("node1", compose.InvokableLambda(func(ctx context.Context, input string) (string, error) {
-			return "output1", nil
-		}), compose.WithNodeName("node1"))
-		_ = g.AddLambdaNode("node2", compose.InvokableLambda(func(ctx context.Context, input string) (string, error) {
-			return strings.Repeat(input, 2), nil
-		}), compose.WithNodeName("node2"))
-		_ = g.AddEdge(compose.START, "node1")
-		_ = g.AddEdge("node1", "node2")
-		_ = g.AddEdge("node2", compose.END)
-
-		runner, err := g.Compile(ctx)
-		assert.NoError(t, err)
-
-		// 7. 设置 mock 期望
-		// 我们期望有 3 个 run 被创建 (graph, node1, node2)
-		// 并且它们都被正确地更新
-		mockClient.EXPECT().CreateRun(gomock.Any(), gomock.Any()).Times(3)
-		mockClient.EXPECT().UpdateRun(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
-
-		// 8. 执行 Graph
-		result, err := runner.Invoke(ctx, "input")
-		assert.NoError(t, err)
-		assert.Equal(t, "output1output1", result)
-	})
+// mockLangsmith 实现 Langsmith 接口，用于注入可控行为
+type mockLangsmith struct {
+	mock.Mock
 }
 
-func TestLangsmithCallback_Stream(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockClient := mock.NewMockLangsmith(ctrl)
+func (m *mockLangsmith) CreateRun(ctx context.Context, run *Run) error {
+	args := m.Called(ctx, run)
+	return args.Error(0)
+}
 
-	mockey.PatchConvey("Test Langsmith Callback Stream", t, func() {
-		mockey.Mock(NewLangsmith).Return(mockClient).Build()
+func (m *mockLangsmith) UpdateRun(ctx context.Context, runID string, patch *RunPatch) error {
+	args := m.Called(ctx, runID, patch)
+	return args.Error(0)
+}
 
-		cbh, err := NewLangsmithHandler(&Config{APIKey: "test-key"})
-		assert.NoError(t, err)
+// TestNewLangsmithHandler 测试构造函数
+func TestNewLangsmithHandler(t *testing.T) {
+	cfg := &Config{APIKey: "test-key", APIURL: "http://test"}
+	h, err := NewLangsmithHandler(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, h)
+}
 
-		ctx := context.Background()
+// TestOnStart 测试 OnStart 正常流程
+func TestOnStart(t *testing.T) {
+	mCli := new(mockLangsmith)
+	h := &CallbackHandler{cli: mCli}
 
-		// Mock 期望
-		// CreateRun 在流开始时被调用一次
-		mockClient.EXPECT().CreateRun(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, run *Run) error {
-			assert.Equal(t, "My-Streaming-Project", run.SessionName)
-			return nil
-		}).Times(1)
-		// UpdateRun 被调用两次：一次用于输入，一次用于输出
-		mockClient.EXPECT().UpdateRun(gomock.Any(), gomock.Any(), gomock.Any()).Times(2)
+	ctx := context.Background()
+	info := &callbacks.RunInfo{Component: "test"}
+	input := callbacks.CallbackInput("hello")
 
-		// 设置 trace 信息
-		ctx = SetTrace(ctx, WithSessionName("My-Streaming-Project"))
+	// 期望 CreateRun 被调用一次
+	mCli.On("CreateRun", mock.Anything, mock.Anything).Return(nil)
 
-		// 准备流式输入
-		insr, insw := schema.Pipe[callbacks.CallbackInput](1)
-		go func() {
-			defer insw.Close()
-			_ = insw.Send(&model.CallbackInput{Messages: []*schema.Message{{Role: schema.User, Content: "Hello"}}}, nil)
-		}()
+	newCtx := h.OnStart(ctx, info, input)
+	assert.NotNil(t, newCtx)
 
-		// 准备流式输出
-		outsr, outsw := schema.Pipe[callbacks.CallbackOutput](1)
-		go func() {
-			defer outsw.Close()
-			_ = outsw.Send(&model.CallbackOutput{Message: &schema.Message{Role: schema.Assistant, Content: "Hi there!"}}, nil)
-		}()
+	mCli.AssertExpectations(t)
+}
 
-		runInfo := &callbacks.RunInfo{Component: components.ComponentOfChatModel, Name: "StreamingChat"}
+// TestOnEnd 测试 OnEnd 正常流程
+func TestOnEnd(t *testing.T) {
+	mCli := new(mockLangsmith)
+	h := &CallbackHandler{cli: mCli}
 
-		// 执行
-		ctx = cbh.OnStartWithStreamInput(ctx, runInfo, insr)
-		cbh.OnEndWithStreamOutput(ctx, runInfo, outsr)
-
-		// 等待 goroutine 完成。在实际测试中，可能需要同步机制。
-		// 对于这个演示，短暂的睡眠就足够了。
-		time.Sleep(100 * time.Millisecond)
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{
+		parentRunID: "run-123",
 	})
+	info := &callbacks.RunInfo{Component: "test"}
+	output := callbacks.CallbackOutput("world")
+
+	mCli.On("UpdateRun", mock.Anything, "run-123", mock.Anything).Return(nil)
+
+	newCtx := h.OnEnd(ctx, info, output)
+	assert.NotNil(t, newCtx)
+
+	mCli.AssertExpectations(t)
+}
+
+// TestOnError 测试 OnError 正常流程
+func TestOnError(t *testing.T) {
+	mCli := new(mockLangsmith)
+	h := &CallbackHandler{cli: mCli}
+
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{
+		parentRunID: "run-123",
+	})
+	info := &callbacks.RunInfo{Component: "test"}
+	err := errors.New("mock error")
+
+	mCli.On("UpdateRun", mock.Anything, "run-123", mock.Anything).Return(nil)
+
+	newCtx := h.OnError(ctx, info, err)
+	assert.NotNil(t, newCtx)
+
+	mCli.AssertExpectations(t)
+}
+
+// TestOnStartWithStreamInput 测试流式输入
+func TestOnStartWithStreamInput(t *testing.T) {
+	mCli := new(mockLangsmith)
+	h := &CallbackHandler{cli: mCli}
+
+	ctx := context.Background()
+	info := &callbacks.RunInfo{Component: "test"}
+
+	// 用 schema.Pipe 构造一个空的 StreamReader[callbacks.CallbackInput]
+	sr, sw := schema.Pipe[callbacks.CallbackInput](1)
+	sw.Close() // 立即关闭，模拟无数据流
+
+	// 期望 CreateRun 被调用一次
+	mCli.On("CreateRun", mock.Anything, mock.Anything).Return(nil)
+
+	newCtx := h.OnStartWithStreamInput(ctx, info, sr)
+	assert.NotNil(t, newCtx)
+
+	// 等待 goroutine 完成
+	time.Sleep(100 * time.Millisecond)
+	mCli.AssertExpectations(t)
+}
+
+// TestOnEndWithStreamOutput 测试流式输出
+func TestOnEndWithStreamOutput(t *testing.T) {
+	mCli := new(mockLangsmith)
+	h := &CallbackHandler{cli: mCli}
+
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{
+		parentRunID: "run-123",
+	})
+	info := &callbacks.RunInfo{Component: "test"}
+
+	// 用 schema.Pipe 构造一个空的 StreamReader[callbacks.CallbackOutput]
+	sr, sw := schema.Pipe[callbacks.CallbackOutput](1)
+	sw.Close() // 立即关闭，模拟无数据流
+
+	mCli.On("UpdateRun", mock.Anything, "run-123", mock.Anything).Return(nil)
+
+	newCtx := h.OnEndWithStreamOutput(ctx, info, sr)
+	assert.NotNil(t, newCtx)
+
+	// 等待 goroutine 完成
+	time.Sleep(100 * time.Millisecond)
+	mCli.AssertExpectations(t)
+}
+
+// TestGetOrInitState 测试状态初始化逻辑
+func TestGetOrInitState(t *testing.T) {
+	h := &CallbackHandler{}
+
+	// 场景 1：已有 state
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{traceID: "abc"})
+	newCtx, state := h.getOrInitState(ctx)
+	assert.Equal(t, "abc", state.traceID)
+	assert.Equal(t, ctx, newCtx)
+
+	// 场景 2：无 state，应初始化
+	ctx2 := context.Background()
+	newCtx2, state2 := h.getOrInitState(ctx2)
+	assert.NotEmpty(t, state2.traceID)
+	assert.NotEqual(t, ctx2, newCtx2)
 }
