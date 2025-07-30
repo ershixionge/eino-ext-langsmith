@@ -1,4 +1,4 @@
-module github.com/ershixionge/eino-ext-langsmith/callbacks/langsmith
+module github.com/cloudwego/eino-ext/callbacks/langsmith
 
 go 1.23.0
 
