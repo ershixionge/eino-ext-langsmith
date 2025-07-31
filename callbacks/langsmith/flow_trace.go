@@ -77,7 +77,10 @@ func (ft *FlowTrace) FinishSpan(ctx context.Context, runID string) {
 }
 
 func (ft *FlowTrace) SpanToString(ctx context.Context) (string, error) {
-	ctx, state := GetOrInitState(ctx)
+	ctx, state := GetState(ctx)
+	if state == nil {
+		return "", nil
+	}
 	val, err := sonic.Marshal(state)
 	if err != nil {
 		return "", err
@@ -86,6 +89,9 @@ func (ft *FlowTrace) SpanToString(ctx context.Context) (string, error) {
 }
 
 func (ft *FlowTrace) StringToSpan(val string) (*LangsmithState, error) {
+	if val == "" {
+		return nil, nil
+	}
 	state := &LangsmithState{}
 	err := sonic.Unmarshal([]byte(val), state)
 	return state, err
