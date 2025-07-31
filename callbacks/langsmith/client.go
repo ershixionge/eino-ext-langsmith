@@ -68,14 +68,11 @@ type Run struct {
 
 // RunPatch 用于更新一个 run
 type RunPatch struct {
-	EndTime          *time.Time             `json:"end_time,omitempty"`
-	Inputs           map[string]interface{} `json:"inputs,omitempty"`
-	Outputs          map[string]interface{} `json:"outputs,omitempty"`
-	Error            *string                `json:"error,omitempty"`
-	Extra            map[string]interface{} `json:"extra,omitempty"`
-	TotalTokens      int                    `json:"total_tokens,omitempty"`
-	PromptTokens     int                    `json:"prompt_tokens,omitempty"`
-	CompletionTokens int                    `json:"completion_tokens,omitempty"`
+	EndTime *time.Time             `json:"end_time,omitempty"`
+	Inputs  map[string]interface{} `json:"inputs,omitempty"`
+	Outputs map[string]interface{} `json:"outputs,omitempty"`
+	Error   *string                `json:"error,omitempty"`
+	Extra   map[string]interface{} `json:"extra,omitempty"`
 }
 
 // langsmithClient 实现了 Langsmith 接口
