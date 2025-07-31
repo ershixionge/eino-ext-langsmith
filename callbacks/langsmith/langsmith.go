@@ -295,15 +295,17 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		if extra == nil {
 			extra = map[string]interface{}{}
 		}
-		if usage != nil {
-			extra["model_usage"] = usage
-		}
 
 		endTime := time.Now().UTC()
 		patch := &RunPatch{
 			EndTime: &endTime,
 			Outputs: map[string]interface{}{"stream_outputs": outMessage},
 			Extra:   extra,
+		}
+		if usage != nil {
+			patch.TotalTokens = usage.TotalTokens
+			patch.PromptTokens = usage.PromptTokens
+			patch.CompletionTokens = usage.CompletionTokens
 		}
 
 		// 使用后台 context
