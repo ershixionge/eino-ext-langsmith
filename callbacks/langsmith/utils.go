@@ -164,9 +164,9 @@ func GetOrInitState(ctx context.Context) (context.Context, *LangsmithState) {
 	parentID := opts.ParentID
 	parentDottedOrder := opts.ParentDottedOrder
 	state := &LangsmithState{
-		traceID:           traceID,
-		parentRunID:       parentID,
-		parentDottedOrder: parentDottedOrder,
+		TraceID:           traceID,
+		ParentRunID:       parentID,
+		ParentDottedOrder: parentDottedOrder,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, state), state
 }

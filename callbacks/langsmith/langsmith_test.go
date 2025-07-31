@@ -76,7 +76,7 @@ func TestOnEnd(t *testing.T) {
 	h := &CallbackHandler{cli: mCli}
 
 	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{
-		parentRunID: "run-123",
+		ParentRunID: "run-123",
 	})
 	info := &callbacks.RunInfo{Component: "test"}
 	output := callbacks.CallbackOutput("world")
@@ -95,7 +95,7 @@ func TestOnError(t *testing.T) {
 	h := &CallbackHandler{cli: mCli}
 
 	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{
-		parentRunID: "run-123",
+		ParentRunID: "run-123",
 	})
 	info := &callbacks.RunInfo{Component: "test"}
 	err := errors.New("mock error")
@@ -137,7 +137,7 @@ func TestOnEndWithStreamOutput(t *testing.T) {
 	h := &CallbackHandler{cli: mCli}
 
 	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{
-		parentRunID: "run-123",
+		ParentRunID: "run-123",
 	})
 	info := &callbacks.RunInfo{Component: "test"}
 
@@ -159,14 +159,14 @@ func TestOnEndWithStreamOutput(t *testing.T) {
 func TestGetOrInitState(t *testing.T) {
 
 	// 场景 1：已有 state
-	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{traceID: "abc"})
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{TraceID: "abc"})
 	newCtx, state := GetOrInitState(ctx)
-	assert.Equal(t, "abc", state.traceID)
+	assert.Equal(t, "abc", state.TraceID)
 	assert.Equal(t, ctx, newCtx)
 
 	// 场景 2：无 state，应初始化
 	ctx2 := context.Background()
 	newCtx2, state2 := GetOrInitState(ctx2)
-	assert.NotEmpty(t, state2.traceID)
+	assert.NotEmpty(t, state2.TraceID)
 	assert.NotEqual(t, ctx2, newCtx2)
 }

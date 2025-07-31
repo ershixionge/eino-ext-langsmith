@@ -27,12 +27,12 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 		state = &LangsmithState{}
 	}
 	runID := uuid.New().String()
-	if state.traceID == "" {
-		state.traceID = runID
+	if state.TraceID == "" {
+		state.TraceID = runID
 	}
 	run := &Run{
 		ID:          runID,
-		TraceID:     state.traceID,
+		TraceID:     state.TraceID,
 		Name:        name,
 		RunType:     RunTypeChain,
 		StartTime:   time.Now().UTC(),
@@ -42,12 +42,12 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 	if opts.ReferenceExampleID != "" {
 		run.ReferenceExampleID = &opts.ReferenceExampleID
 	}
-	if state.parentRunID != "" {
-		run.ParentRunID = &state.parentRunID
+	if state.ParentRunID != "" {
+		run.ParentRunID = &state.ParentRunID
 	}
 	nowTime := run.StartTime.Format("20060102T150405000000")
-	if state.parentDottedOrder != "" {
-		run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.parentDottedOrder, nowTime, runID)
+	if state.ParentDottedOrder != "" {
+		run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.ParentDottedOrder, nowTime, runID)
 	} else {
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
@@ -56,9 +56,9 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 		return nil, "", err
 	}
 	newState := &LangsmithState{
-		traceID:           state.traceID,
-		parentRunID:       runID,
-		parentDottedOrder: run.DottedOrder,
+		TraceID:           state.TraceID,
+		ParentRunID:       runID,
+		ParentDottedOrder: run.DottedOrder,
 	}
 
 	return context.WithValue(ctx, langsmithStateKey{}, newState), runID, nil

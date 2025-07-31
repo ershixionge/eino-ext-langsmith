@@ -47,9 +47,9 @@ func NewLangsmithHandler(flowTrace *FlowTrace) (*CallbackHandler, error) {
 }
 
 type LangsmithState struct {
-	traceID           string
-	parentRunID       string
-	parentDottedOrder string
+	TraceID           string `json:"trace_id"`
+	ParentRunID       string `json:"parent_run_id"`
+	ParentDottedOrder string `json:"parent_dotted_order"`
 }
 
 type langsmithStateKey struct{}
@@ -71,12 +71,12 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("marshal input error: %v, runinfo: %+v", err, info)
 		return ctx
 	}
-	if state.traceID == "" {
-		state.traceID = runID
+	if state.TraceID == "" {
+		state.TraceID = runID
 	}
 	run := &Run{
 		ID:          runID,
-		TraceID:     state.traceID,
+		TraceID:     state.TraceID,
 		Name:        runInfoToName(info),
 		RunType:     runInfoToRunType(info),
 		StartTime:   time.Now().UTC(),
@@ -87,12 +87,12 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	if opts.ReferenceExampleID != "" {
 		run.ReferenceExampleID = &opts.ReferenceExampleID
 	}
-	if state.parentRunID != "" {
-		run.ParentRunID = &state.parentRunID
+	if state.ParentRunID != "" {
+		run.ParentRunID = &state.ParentRunID
 	}
 	nowTime := run.StartTime.Format("20060102T150405000000")
-	if state.parentDottedOrder != "" {
-		run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.parentDottedOrder, nowTime, runID)
+	if state.ParentDottedOrder != "" {
+		run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.ParentDottedOrder, nowTime, runID)
 	} else {
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
@@ -103,9 +103,9 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	}
 
 	newState := &LangsmithState{
-		traceID:           state.traceID,
-		parentRunID:       runID,
-		parentDottedOrder: run.DottedOrder,
+		TraceID:           state.TraceID,
+		ParentRunID:       runID,
+		ParentDottedOrder: run.DottedOrder,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
@@ -131,7 +131,7 @@ func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 		Outputs: map[string]interface{}{"output": out},
 	}
 
-	err = c.cli.UpdateRun(ctx, state.parentRunID, patch)
+	err = c.cli.UpdateRun(ctx, state.ParentRunID, patch)
 	if err != nil {
 		log.Printf("[langsmith] failed to update run: %v", err)
 	}
@@ -148,14 +148,14 @@ func (c *CallbackHandler) OnError(ctx context.Context, info *callbacks.RunInfo, 
 		return ctx
 	}
 
-	endTime := time.Now()
+	endTime := time.Now().UTC()
 	errStr := err.Error()
 	patch := &RunPatch{
 		EndTime: &endTime,
 		Error:   &errStr,
 	}
 
-	updateErr := c.cli.UpdateRun(ctx, state.parentRunID, patch)
+	updateErr := c.cli.UpdateRun(ctx, state.ParentRunID, patch)
 	if updateErr != nil {
 		log.Printf("[langsmith] failed to update run with error: %v", updateErr)
 	}
@@ -177,13 +177,13 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	if opts == nil {
 		opts = &traceOptions{}
 	}
-	if state.traceID == "" {
-		state.traceID = runID
+	if state.TraceID == "" {
+		state.TraceID = runID
 	}
 
 	run := &Run{
 		ID:        runID,
-		TraceID:   state.traceID,
+		TraceID:   state.TraceID,
 		Name:      runInfoToName(info),
 		RunType:   runInfoToRunType(info),
 		StartTime: time.Now().UTC(),
@@ -192,8 +192,8 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		//Extra:       extra,
 	}
 	nowTime := run.StartTime.Format("20060102T150405000000")
-	if state.parentDottedOrder != "" {
-		run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.parentDottedOrder, nowTime, runID)
+	if state.ParentDottedOrder != "" {
+		run.DottedOrder = fmt.Sprintf("%s.%sZ%s", state.ParentDottedOrder, nowTime, runID)
 	} else {
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
@@ -234,8 +234,8 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		if opts.ReferenceExampleID != "" {
 			run.ReferenceExampleID = &opts.ReferenceExampleID
 		}
-		if state.parentRunID != "" {
-			run.ParentRunID = &state.parentRunID
+		if state.ParentRunID != "" {
+			run.ParentRunID = &state.ParentRunID
 		}
 
 		run.Inputs = map[string]interface{}{"stream_inputs": inMessage}
@@ -247,9 +247,9 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	}()
 
 	newState := &LangsmithState{
-		traceID:           state.traceID,
-		parentRunID:       runID,
-		parentDottedOrder: run.DottedOrder,
+		TraceID:           state.TraceID,
+		ParentRunID:       runID,
+		ParentDottedOrder: run.DottedOrder,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
@@ -307,7 +307,7 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		}
 
 		// 使用后台 context
-		err := c.cli.UpdateRun(context.Background(), state.parentRunID, patch)
+		err := c.cli.UpdateRun(context.Background(), state.ParentRunID, patch)
 		if err != nil {
 			log.Printf("[langsmith] failed to update run with stream output: %v", err)
 		}
