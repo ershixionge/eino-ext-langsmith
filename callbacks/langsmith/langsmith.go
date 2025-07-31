@@ -42,12 +42,11 @@ type CallbackHandler struct {
 }
 
 // NewLangsmithHandler 创建一个新的 CallbackHandler
-func NewLangsmithHandler(cfg *Config) (*CallbackHandler, error) {
-	cli := NewLangsmith(cfg.APIKey, cfg.APIURL)
-	return &CallbackHandler{cli: cli}, nil
+func NewLangsmithHandler(flowTrace *FlowTrace) (*CallbackHandler, error) {
+	return &CallbackHandler{cli: flowTrace.cli}, nil
 }
 
-type langsmithState struct {
+type LangsmithState struct {
 	traceID           string
 	parentRunID       string
 	parentDottedOrder string
@@ -55,34 +54,12 @@ type langsmithState struct {
 
 type langsmithStateKey struct{}
 
-func (c *CallbackHandler) getOrInitState(ctx context.Context) (context.Context, *langsmithState) {
-	if state, ok := ctx.Value(langsmithStateKey{}).(*langsmithState); ok && state != nil {
-		return ctx, state
-	}
-
-	// 从 context 初始化
-	opts, _ := ctx.Value(langsmithTraceOptionKey{}).(*traceOptions)
-	if opts == nil {
-		opts = &traceOptions{}
-	}
-
-	traceID := opts.TraceID
-	parentID := opts.ParentID
-	parentDottedOrder := opts.ParentDottedOrder
-	state := &langsmithState{
-		traceID:           traceID,
-		parentRunID:       parentID,
-		parentDottedOrder: parentDottedOrder,
-	}
-	return context.WithValue(ctx, langsmithStateKey{}, state), state
-}
-
 func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
 	if info == nil {
 		return ctx
 	}
 
-	ctx, state := c.getOrInitState(ctx)
+	ctx, state := GetOrInitState(ctx)
 	runID := uuid.New().String()
 
 	opts, _ := ctx.Value(langsmithTraceOptionKey{}).(*traceOptions)
@@ -125,7 +102,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("[langsmith] failed to create run: %v", err)
 	}
 
-	newState := &langsmithState{
+	newState := &LangsmithState{
 		traceID:           state.traceID,
 		parentRunID:       runID,
 		parentDottedOrder: run.DottedOrder,
@@ -137,7 +114,7 @@ func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 	if info == nil {
 		return ctx
 	}
-	state, ok := ctx.Value(langsmithStateKey{}).(*langsmithState)
+	state, ok := ctx.Value(langsmithStateKey{}).(*LangsmithState)
 	if !ok || state == nil {
 		log.Printf("[langsmith] no state in context on OnEnd, runinfo: %+v", info)
 		return ctx
@@ -165,7 +142,7 @@ func (c *CallbackHandler) OnError(ctx context.Context, info *callbacks.RunInfo, 
 	if info == nil {
 		return ctx
 	}
-	state, ok := ctx.Value(langsmithStateKey{}).(*langsmithState)
+	state, ok := ctx.Value(langsmithStateKey{}).(*LangsmithState)
 	if !ok || state == nil {
 		log.Printf("[langsmith] no state in context on OnError, runinfo: %+v", info)
 		return ctx
@@ -193,7 +170,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	}
 
 	// 首先创建 run，然后用流式输入更新它
-	ctx, state := c.getOrInitState(ctx)
+	ctx, state := GetOrInitState(ctx)
 	runID := uuid.New().String()
 
 	opts, _ := ctx.Value(langsmithTraceOptionKey{}).(*traceOptions)
@@ -269,7 +246,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		}
 	}()
 
-	newState := &langsmithState{
+	newState := &LangsmithState{
 		traceID:           state.traceID,
 		parentRunID:       runID,
 		parentDottedOrder: run.DottedOrder,
@@ -283,7 +260,7 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		output.Close()
 		return ctx
 	}
-	state, ok := ctx.Value(langsmithStateKey{}).(*langsmithState)
+	state, ok := ctx.Value(langsmithStateKey{}).(*LangsmithState)
 	if !ok || state == nil {
 		log.Printf("[langsmith] no state in context on OnEndWithStreamOutput, runinfo: %+v", info)
 		output.Close()

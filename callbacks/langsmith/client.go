@@ -41,9 +41,11 @@ const (
 type RunType string
 
 const (
-	RunTypeChain RunType = "chain"
-	RunTypeLLM   RunType = "llm"
-	RunTypeTool  RunType = "tool"
+	RunTypeChain    RunType = "chain"
+	RunTypeLLM      RunType = "llm"
+	RunTypeTool     RunType = "tool"
+	RunTypeRoot     RunType = "root"
+	RunTypeSubAgent RunType = "sub_agent"
 )
 
 // Run 代表一个 Langsmith run

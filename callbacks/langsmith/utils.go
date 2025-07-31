@@ -17,6 +17,7 @@
 package langsmith
 
 import (
+	"context"
 	"fmt"
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components"
@@ -146,4 +147,26 @@ func concatMessageArray(mas [][]*schema.Message) ([]*schema.Message, error) {
 	}
 
 	return ret, nil
+}
+
+func GetOrInitState(ctx context.Context) (context.Context, *LangsmithState) {
+	if state, ok := ctx.Value(langsmithStateKey{}).(*LangsmithState); ok && state != nil {
+		return ctx, state
+	}
+
+	// 从 context 初始化
+	opts, _ := ctx.Value(langsmithTraceOptionKey{}).(*traceOptions)
+	if opts == nil {
+		opts = &traceOptions{}
+	}
+
+	traceID := opts.TraceID
+	parentID := opts.ParentID
+	parentDottedOrder := opts.ParentDottedOrder
+	state := &LangsmithState{
+		traceID:           traceID,
+		parentRunID:       parentID,
+		parentDottedOrder: parentDottedOrder,
+	}
+	return context.WithValue(ctx, langsmithStateKey{}, state), state
 }

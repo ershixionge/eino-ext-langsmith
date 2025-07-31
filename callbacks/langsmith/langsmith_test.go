@@ -46,7 +46,8 @@ func (m *mockLangsmith) UpdateRun(ctx context.Context, runID string, patch *RunP
 // TestNewLangsmithHandler 测试构造函数
 func TestNewLangsmithHandler(t *testing.T) {
 	cfg := &Config{APIKey: "test-key", APIURL: "http://test"}
-	h, err := NewLangsmithHandler(cfg)
+	ft := NewFlowTrace(cfg)
+	h, err := NewLangsmithHandler(ft)
 	assert.NoError(t, err)
 	assert.NotNil(t, h)
 }
@@ -74,7 +75,7 @@ func TestOnEnd(t *testing.T) {
 	mCli := new(mockLangsmith)
 	h := &CallbackHandler{cli: mCli}
 
-	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{
 		parentRunID: "run-123",
 	})
 	info := &callbacks.RunInfo{Component: "test"}
@@ -93,7 +94,7 @@ func TestOnError(t *testing.T) {
 	mCli := new(mockLangsmith)
 	h := &CallbackHandler{cli: mCli}
 
-	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{
 		parentRunID: "run-123",
 	})
 	info := &callbacks.RunInfo{Component: "test"}
@@ -135,7 +136,7 @@ func TestOnEndWithStreamOutput(t *testing.T) {
 	mCli := new(mockLangsmith)
 	h := &CallbackHandler{cli: mCli}
 
-	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{
 		parentRunID: "run-123",
 	})
 	info := &callbacks.RunInfo{Component: "test"}
@@ -156,17 +157,16 @@ func TestOnEndWithStreamOutput(t *testing.T) {
 
 // TestGetOrInitState 测试状态初始化逻辑
 func TestGetOrInitState(t *testing.T) {
-	h := &CallbackHandler{}
 
 	// 场景 1：已有 state
-	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &langsmithState{traceID: "abc"})
-	newCtx, state := h.getOrInitState(ctx)
+	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{traceID: "abc"})
+	newCtx, state := GetOrInitState(ctx)
 	assert.Equal(t, "abc", state.traceID)
 	assert.Equal(t, ctx, newCtx)
 
 	// 场景 2：无 state，应初始化
 	ctx2 := context.Background()
-	newCtx2, state2 := h.getOrInitState(ctx2)
+	newCtx2, state2 := GetOrInitState(ctx2)
 	assert.NotEmpty(t, state2.traceID)
 	assert.NotEqual(t, ctx2, newCtx2)
 }
