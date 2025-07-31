@@ -18,7 +18,7 @@ func NewFlowTrace(cfg *Config) *FlowTrace {
 	return &FlowTrace{cli: cli}
 }
 
-func (ft *FlowTrace) StartSpan(ctx context.Context, name, spanType string, state *LangsmithState) (context.Context, string, error) {
+func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *LangsmithState) (context.Context, string, error) {
 	opts, _ := ctx.Value(langsmithTraceOptionKey{}).(*traceOptions)
 	if opts == nil {
 		opts = &traceOptions{}
@@ -34,7 +34,7 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name, spanType string, state
 		ID:          runID,
 		TraceID:     state.traceID,
 		Name:        name,
-		RunType:     RunType(spanType),
+		RunType:     RunTypeChain,
 		StartTime:   time.Now().UTC(),
 		SessionName: opts.SessionName,
 		Extra:       opts.Metadata,
