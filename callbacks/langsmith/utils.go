@@ -170,3 +170,11 @@ func GetOrInitState(ctx context.Context) (context.Context, *LangsmithState) {
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, state), state
 }
+
+func GetState(ctx context.Context) (context.Context, *LangsmithState) {
+	if state, ok := ctx.Value(langsmithStateKey{}).(*LangsmithState); ok && state != nil {
+		return ctx, state
+	} else {
+		return ctx, nil
+	}
+}
