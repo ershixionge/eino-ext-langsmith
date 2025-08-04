@@ -19,33 +19,46 @@ package langsmith
 import (
 	"context"
 	"fmt"
-	"github.com/bytedance/sonic"
 	"io"
 	"log"
 	"runtime/debug"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 )
 
-// Config 用于配置 LangsmithHandler
+// Config LangsmithHandler configuration
 type Config struct {
-	APIKey string
-	APIURL string
+	APIKey   string                           // langsmith api key
+	APIURL   string                           // langsmith api url, default:https://api.smith.langchain.com
+	RunIDGen func(ctx context.Context) string // langsmith run_id generator
 }
 
-// CallbackHandler 实现了 eino 的 Handler 接口
+// CallbackHandler implements eino's Handler interface
 type CallbackHandler struct {
 	cli Langsmith
+	cfg *Config
 }
 
-// NewLangsmithHandler 创建一个新的 CallbackHandler
-func NewLangsmithHandler(flowTrace *FlowTrace) (*CallbackHandler, error) {
-	return &CallbackHandler{cli: flowTrace.cli}, nil
+// NewLangsmithHandler creates a new CallbackHandler
+func NewLangsmithHandler(cfg *Config) (*CallbackHandler, error) {
+	// default run id generator
+	if cfg.RunIDGen == nil {
+		cfg.RunIDGen = func(ctx context.Context) string {
+			return uuid.NewString()
+		}
+	}
+	cli := NewLangsmith(cfg.APIKey, cfg.APIURL)
+	return &CallbackHandler{
+		cli: cli,
+		cfg: cfg,
+	}, nil
 }
 
+// LangsmithState maintains Langsmith call chain state
 type LangsmithState struct {
 	TraceID           string `json:"trace_id"`
 	ParentRunID       string `json:"parent_run_id"`
@@ -54,13 +67,14 @@ type LangsmithState struct {
 
 type langsmithStateKey struct{}
 
+// OnStart handles call start event
 func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
 	if info == nil {
 		return ctx
 	}
 
 	ctx, state := GetOrInitState(ctx)
-	runID := uuid.New().String()
+	runID := c.cfg.RunIDGen(ctx)
 
 	opts, _ := ctx.Value(langsmithTraceOptionKey{}).(*traceOptions)
 	if opts == nil {
@@ -70,9 +84,6 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	if err != nil {
 		log.Printf("marshal input error: %v, runinfo: %+v", err, info)
 		return ctx
-	}
-	if state.TraceID == "" {
-		state.TraceID = runID
 	}
 	run := &Run{
 		ID:          runID,
@@ -84,6 +95,10 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		SessionName: opts.SessionName,
 		Extra:       opts.Metadata,
 	}
+	if state.TraceID == "" {
+		run.TraceID = runID
+	}
+
 	if opts.ReferenceExampleID != "" {
 		run.ReferenceExampleID = &opts.ReferenceExampleID
 	}
@@ -110,6 +125,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
 
+// OnEnd handles successful call completion event
 func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
 	if info == nil {
 		return ctx
@@ -138,6 +154,7 @@ func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 	return ctx
 }
 
+// OnError handles call failure event
 func (c *CallbackHandler) OnError(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
 	if info == nil {
 		return ctx
@@ -162,34 +179,30 @@ func (c *CallbackHandler) OnError(ctx context.Context, info *callbacks.RunInfo, 
 	return ctx
 }
 
-// OnStartWithStreamInput 处理流式输入
+// OnStartWithStreamInput handles streaming input initialization
 func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
 	if info == nil {
 		input.Close()
 		return ctx
 	}
-
-	// 首先创建 run，然后用流式输入更新它
 	ctx, state := GetOrInitState(ctx)
-	runID := uuid.New().String()
+	runID := c.cfg.RunIDGen(ctx)
 
 	opts, _ := ctx.Value(langsmithTraceOptionKey{}).(*traceOptions)
 	if opts == nil {
 		opts = &traceOptions{}
 	}
-	if state.TraceID == "" {
-		state.TraceID = runID
-	}
 
 	run := &Run{
-		ID:        runID,
-		TraceID:   state.TraceID,
-		Name:      runInfoToName(info),
-		RunType:   runInfoToRunType(info),
-		StartTime: time.Now().UTC(),
-		//Inputs:      map[string]interface{}{"stream_inputs": inMessage}, // 初始为空
+		ID:          runID,
+		TraceID:     state.TraceID,
+		Name:        runInfoToName(info),
+		RunType:     runInfoToRunType(info),
+		StartTime:   time.Now().UTC(),
 		SessionName: opts.SessionName,
-		//Extra:       extra,
+	}
+	if state.TraceID == "" {
+		run.TraceID = runID
 	}
 	nowTime := run.StartTime.Format("20060102T150405000000")
 	if state.ParentDottedOrder != "" {
@@ -198,7 +211,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
 
-	// 启动一个 goroutine 来处理输入流
+	// start goroutine to handle stream input
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -254,7 +267,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
 
-// OnEndWithStreamOutput 处理流式输出
+// OnEndWithStreamOutput handles streaming output completion
 func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
 	if info == nil {
 		output.Close()

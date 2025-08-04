@@ -3,19 +3,26 @@ package langsmith
 import (
 	"context"
 	"fmt"
-	"github.com/bytedance/sonic"
-	"github.com/google/uuid"
 	"log"
 	"time"
+
+	"github.com/bytedance/sonic"
+	"github.com/google/uuid"
 )
 
-type FlowTrace struct {
+type FlowTrace struct { // associating multiple sessions with the same trace
 	cli Langsmith
+	cfg *Config
 }
 
 func NewFlowTrace(cfg *Config) *FlowTrace {
 	cli := NewLangsmith(cfg.APIKey, cfg.APIURL)
-	return &FlowTrace{cli: cli}
+	if cfg.RunIDGen == nil {
+		cfg.RunIDGen = func(ctx context.Context) string {
+			return uuid.NewString()
+		}
+	}
+	return &FlowTrace{cli: cli, cfg: cfg}
 }
 
 func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *LangsmithState) (context.Context, string, error) {
@@ -26,10 +33,7 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 	if state == nil {
 		state = &LangsmithState{}
 	}
-	runID := uuid.New().String()
-	if state.TraceID == "" {
-		state.TraceID = runID
-	}
+	runID := ft.cfg.RunIDGen(ctx)
 	run := &Run{
 		ID:          runID,
 		TraceID:     state.TraceID,
@@ -76,6 +80,7 @@ func (ft *FlowTrace) FinishSpan(ctx context.Context, runID string) {
 	}
 }
 
+// SpanToString parse ctx's LangsmithState to string
 func (ft *FlowTrace) SpanToString(ctx context.Context) (string, error) {
 	ctx, state := GetState(ctx)
 	if state == nil {
@@ -88,6 +93,7 @@ func (ft *FlowTrace) SpanToString(ctx context.Context) (string, error) {
 	return string(val), nil
 }
 
+// StringToSpan parse string to LangsmithState
 func (ft *FlowTrace) StringToSpan(val string) (*LangsmithState, error) {
 	if val == "" {
 		return nil, nil

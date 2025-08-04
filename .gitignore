@@ -34,5 +34,3 @@ output/*
 
 # Vscode files
 .vscode
-
-callbacks/langsmith/examples/*
