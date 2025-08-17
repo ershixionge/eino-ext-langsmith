@@ -60,9 +60,11 @@ func NewLangsmithHandler(cfg *Config) (*CallbackHandler, error) {
 
 // LangsmithState maintains Langsmith call chain state
 type LangsmithState struct {
-	TraceID           string `json:"trace_id"`
-	ParentRunID       string `json:"parent_run_id"`
-	ParentDottedOrder string `json:"parent_dotted_order"`
+	TraceID           string                 `json:"trace_id"`
+	ParentRunID       string                 `json:"parent_run_id"`
+	ParentDottedOrder string                 `json:"parent_dotted_order"`
+	Metadata          map[string]interface{} `json:"metadata"`
+	Tags              []string               `json:"tags"`
 }
 
 type langsmithStateKey struct{}
@@ -94,6 +96,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		Inputs:      map[string]interface{}{"input": in},
 		SessionName: opts.SessionName,
 		Extra:       opts.Metadata,
+		Tags:        opts.Tags,
 	}
 	if state.TraceID == "" {
 		run.TraceID = runID
@@ -121,6 +124,8 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		TraceID:           state.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
+		Metadata:          run.Extra,
+		Tags:              run.Tags,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
@@ -200,6 +205,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		RunType:     runInfoToRunType(info),
 		StartTime:   time.Now().UTC(),
 		SessionName: opts.SessionName,
+		Tags:        opts.Tags,
 	}
 	if state.TraceID == "" {
 		run.TraceID = runID
@@ -237,11 +243,16 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			log.Printf("extract stream model input error: %v, runinfo: %+v", err_, info)
 			return
 		}
-		if extra == nil {
-			extra = map[string]interface{}{}
+		var metaData = opts.Metadata
+		if extra != nil {
+			for k, v := range extra {
+				metaData[k] = v
+			}
 		}
 		if modelConf != nil {
-			extra["model_conf"] = modelConf
+			metaData["ls_model_name"] = modelConf.Model
+			metaData["ls_max_tokens"] = modelConf.MaxTokens
+			metaData["model_conf"] = modelConf
 		}
 
 		if opts.ReferenceExampleID != "" {
@@ -252,7 +263,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		}
 
 		run.Inputs = map[string]interface{}{"stream_inputs": inMessage}
-		run.Extra = extra
+		run.Extra = metaData
 		err := c.cli.CreateRun(ctx, run)
 		if err != nil {
 			log.Printf("[langsmith] failed to create run for stream: %v", err)
@@ -263,6 +274,8 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		TraceID:           state.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
+		Metadata:          run.Extra,
+		Tags:              run.Tags,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
@@ -305,17 +318,25 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			log.Printf("extract stream model output error: %v, runinfo: %+v", err_, info)
 			return
 		}
-		if extra == nil {
-			extra = map[string]interface{}{}
+		var metaData = state.Metadata
+		if extra != nil {
+			for k, v := range extra {
+				metaData[k] = v
+			}
 		}
 		if usage != nil {
-			extra["model_usage"] = usage
+			var langsmithUsage = map[string]int{
+				"input_tokens":  usage.PromptTokens,
+				"output_tokens": usage.CompletionTokens,
+				"total_tokens":  usage.TotalTokens,
+			}
+			metaData["USAGE_METADATA"] = langsmithUsage
 		}
 		endTime := time.Now().UTC()
 		patch := &RunPatch{
 			EndTime: &endTime,
 			Outputs: map[string]interface{}{"stream_outputs": outMessage},
-			Extra:   extra,
+			Extra:   metaData,
 		}
 
 		// 使用后台 context

@@ -16,7 +16,11 @@
 
 package langsmith
 
-import "context"
+import (
+	"context"
+
+	"golang.org/x/exp/slices"
+)
 
 type langsmithTraceOptionKey struct{}
 
@@ -27,6 +31,7 @@ type traceOptions struct {
 	Metadata           map[string]interface{}
 	ParentID           string
 	ParentDottedOrder  string
+	Tags               []string
 }
 
 type TraceOption func(*traceOptions)
@@ -47,6 +52,18 @@ func WithSessionName(name string) TraceOption {
 	}
 }
 
+// AddTag 插入tag
+func AddTag(tag string) TraceOption {
+	return func(o *traceOptions) {
+		if o.Tags == nil {
+			o.Tags = []string{}
+		}
+		if !slices.Contains(o.Tags, tag) {
+			o.Tags = append(o.Tags, tag)
+		}
+	}
+}
+
 // WithReferenceExampleID 关联到一个 example
 func WithReferenceExampleID(id string) TraceOption {
 	return func(o *traceOptions) {
@@ -61,9 +78,15 @@ func WithTraceID(id string) TraceOption {
 	}
 }
 
-// WithMetadata 设置 trace 的元数据
-func WithMetadata(metadata map[string]interface{}) TraceOption {
+// SetMetadata 设置 trace 的元数据, 覆盖写入
+func SetMetadata(metadata map[string]interface{}) TraceOption {
 	return func(o *traceOptions) {
-		o.Metadata = metadata
+		if o.Metadata == nil {
+			o.Metadata = metadata
+		} else {
+			for k, v := range metadata {
+				o.Metadata[k] = v
+			}
+		}
 	}
 }

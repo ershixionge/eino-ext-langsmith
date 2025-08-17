@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/cloudwego/eino-ext/callbacks/langsmith"
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/compose"
+	"github.com/ershixionge/eino-ext-langsmith/callbacks/langsmith"
 	"github.com/google/uuid"
 )
 
