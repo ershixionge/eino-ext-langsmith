@@ -121,7 +121,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	}
 
 	newState := &LangsmithState{
-		TraceID:           state.TraceID,
+		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
 		Metadata:          run.Extra,
@@ -243,16 +243,26 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			log.Printf("extract stream model input error: %v, runinfo: %+v", err_, info)
 			return
 		}
+		infoStr, _ := sonic.MarshalString(info)
+		inputStr, _ := sonic.MarshalString(input)
+		log.Printf("infoStr:%s, inputs: %s", infoStr, inputStr)
 		var metaData = opts.Metadata
+		if len(metaData) == 0 {
+			metaData = map[string]interface{}{"METADATA": map[string]interface{}{}}
+		} else if _, okk := metaData["METADATA"]; !okk {
+			metaData["METADATA"] = map[string]interface{}{}
+		}
 		if extra != nil {
 			for k, v := range extra {
 				metaData[k] = v
 			}
 		}
 		if modelConf != nil {
-			metaData["ls_model_name"] = modelConf.Model
-			metaData["ls_max_tokens"] = modelConf.MaxTokens
-			metaData["model_conf"] = modelConf
+			var tmp = metaData["METADATA"].(map[string]interface{})
+			tmp["ls_model_name"] = modelConf.Model
+			tmp["ls_max_tokens"] = modelConf.MaxTokens
+			tmp["model_conf"] = modelConf
+			metaData["METADATA"] = tmp
 		}
 
 		if opts.ReferenceExampleID != "" {
@@ -271,7 +281,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	}()
 
 	newState := &LangsmithState{
-		TraceID:           state.TraceID,
+		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
 		Metadata:          run.Extra,
@@ -319,18 +329,25 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			return
 		}
 		var metaData = state.Metadata
+		if len(metaData) == 0 {
+			metaData = map[string]interface{}{"METADATA": map[string]interface{}{}}
+		} else if _, okk := metaData["METADATA"]; !okk {
+			metaData["METADATA"] = map[string]interface{}{}
+		}
 		if extra != nil {
 			for k, v := range extra {
 				metaData[k] = v
 			}
 		}
 		if usage != nil {
+			var tmp = metaData["METADATA"].(map[string]interface{})
 			var langsmithUsage = map[string]int{
 				"input_tokens":  usage.PromptTokens,
 				"output_tokens": usage.CompletionTokens,
 				"total_tokens":  usage.TotalTokens,
 			}
-			metaData["USAGE_METADATA"] = langsmithUsage
+			tmp["USAGE_METADATA"] = langsmithUsage
+			metaData["METADATA"] = tmp
 		}
 		endTime := time.Now().UTC()
 		patch := &RunPatch{

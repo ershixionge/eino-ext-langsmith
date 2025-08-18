@@ -42,6 +42,10 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 		StartTime:   time.Now().UTC(),
 		SessionName: opts.SessionName,
 		Extra:       opts.Metadata,
+		Tags:        opts.Tags,
+	}
+	if state.TraceID == "" {
+		run.TraceID = runID
 	}
 	if opts.ReferenceExampleID != "" {
 		run.ReferenceExampleID = &opts.ReferenceExampleID
@@ -60,7 +64,7 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 		return nil, "", err
 	}
 	newState := &LangsmithState{
-		TraceID:           state.TraceID,
+		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
 	}
