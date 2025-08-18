@@ -186,6 +186,10 @@ func (c *CallbackHandler) OnError(ctx context.Context, info *callbacks.RunInfo, 
 
 // OnStartWithStreamInput handles streaming input initialization
 func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
+	infoStr, _ := sonic.MarshalString(info)
+	inputStr, _ := sonic.MarshalString(input)
+	log.Printf("infoStr:%s, inputs: %s", infoStr, inputStr)
+	fmt.Printf("infoStr:%s, inputs: %s", infoStr, inputStr)
 	if info == nil {
 		input.Close()
 		return ctx
@@ -243,9 +247,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			log.Printf("extract stream model input error: %v, runinfo: %+v", err_, info)
 			return
 		}
-		infoStr, _ := sonic.MarshalString(info)
-		inputStr, _ := sonic.MarshalString(input)
-		log.Printf("infoStr:%s, inputs: %s", infoStr, inputStr)
+
 		var metaData = opts.Metadata
 		if len(metaData) == 0 {
 			metaData = map[string]interface{}{"METADATA": map[string]interface{}{}}
