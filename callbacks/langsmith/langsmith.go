@@ -244,15 +244,20 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			return
 		}
 		var metaData = opts.Metadata
+		if metaData == nil {
+			metaData = map[string]interface{}{"METADATA": map[string]interface{}{}}
+		}
 		if extra != nil {
 			for k, v := range extra {
 				metaData[k] = v
 			}
 		}
 		if modelConf != nil {
-			metaData["ls_model_name"] = modelConf.Model
-			metaData["ls_max_tokens"] = modelConf.MaxTokens
-			metaData["model_conf"] = modelConf
+			var tmp = metaData["METADATA"].(map[string]interface{})
+			tmp["ls_model_name"] = modelConf.Model
+			tmp["ls_max_tokens"] = modelConf.MaxTokens
+			tmp["model_conf"] = modelConf
+			metaData["METADATA"] = tmp
 		}
 
 		if opts.ReferenceExampleID != "" {
@@ -325,12 +330,14 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			}
 		}
 		if usage != nil {
+			var tmp = metaData["METADATA"].(map[string]interface{})
 			var langsmithUsage = map[string]int{
 				"input_tokens":  usage.PromptTokens,
 				"output_tokens": usage.CompletionTokens,
 				"total_tokens":  usage.TotalTokens,
 			}
-			metaData["USAGE_METADATA"] = langsmithUsage
+			tmp["USAGE_METADATA"] = langsmithUsage
+			metaData["METADATA"] = tmp
 		}
 		endTime := time.Now().UTC()
 		patch := &RunPatch{
