@@ -87,6 +87,23 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("marshal input error: %v, runinfo: %+v", err, info)
 		return ctx
 	}
+	var metaData = opts.Metadata
+	if len(metaData) == 0 {
+		metaData = map[string]interface{}{"metadata": map[string]interface{}{}}
+	} else if _, okk := metaData["metadata"]; !okk {
+		metaData["metadata"] = map[string]interface{}{}
+	}
+	if input != nil {
+		modelConf, _, _, _ := extractModelInput(convModelCallbackInput([]callbacks.CallbackInput{input}))
+		if modelConf != nil {
+			var tmp = metaData["metadata"].(map[string]interface{})
+			tmp["ls_model_name"] = modelConf.Model
+			tmp["ls_max_tokens"] = modelConf.MaxTokens
+			tmp["model_conf"] = modelConf
+			metaData["metadata"] = tmp
+		}
+	}
+
 	run := &Run{
 		ID:          runID,
 		TraceID:     state.TraceID,
@@ -95,7 +112,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		StartTime:   time.Now().UTC(),
 		Inputs:      map[string]interface{}{"input": in},
 		SessionName: opts.SessionName,
-		Extra:       opts.Metadata,
+		Extra:       metaData,
 		Tags:        opts.Tags,
 	}
 	if state.TraceID == "" {
@@ -186,10 +203,6 @@ func (c *CallbackHandler) OnError(ctx context.Context, info *callbacks.RunInfo, 
 
 // OnStartWithStreamInput handles streaming input initialization
 func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
-	infoStr, _ := sonic.MarshalString(info)
-	inputStr, _ := sonic.MarshalString(input)
-	log.Printf("infoStr:%s, inputs: %s", infoStr, inputStr)
-	fmt.Printf("infoStr:%s, inputs: %s", infoStr, inputStr)
 	if info == nil {
 		input.Close()
 		return ctx
@@ -250,9 +263,9 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 
 		var metaData = opts.Metadata
 		if len(metaData) == 0 {
-			metaData = map[string]interface{}{"METADATA": map[string]interface{}{}}
-		} else if _, okk := metaData["METADATA"]; !okk {
-			metaData["METADATA"] = map[string]interface{}{}
+			metaData = map[string]interface{}{"metadata": map[string]interface{}{}}
+		} else if _, okk := metaData["metadata"]; !okk {
+			metaData["metadata"] = map[string]interface{}{}
 		}
 		if extra != nil {
 			for k, v := range extra {
@@ -260,11 +273,11 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			}
 		}
 		if modelConf != nil {
-			var tmp = metaData["METADATA"].(map[string]interface{})
+			var tmp = metaData["metadata"].(map[string]interface{})
 			tmp["ls_model_name"] = modelConf.Model
 			tmp["ls_max_tokens"] = modelConf.MaxTokens
 			tmp["model_conf"] = modelConf
-			metaData["METADATA"] = tmp
+			metaData["metadata"] = tmp
 		}
 
 		if opts.ReferenceExampleID != "" {
@@ -332,9 +345,9 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		}
 		var metaData = state.Metadata
 		if len(metaData) == 0 {
-			metaData = map[string]interface{}{"METADATA": map[string]interface{}{}}
-		} else if _, okk := metaData["METADATA"]; !okk {
-			metaData["METADATA"] = map[string]interface{}{}
+			metaData = map[string]interface{}{"metadata": map[string]interface{}{}}
+		} else if _, okk := metaData["metadata"]; !okk {
+			metaData["metadata"] = map[string]interface{}{}
 		}
 		if extra != nil {
 			for k, v := range extra {
@@ -342,14 +355,14 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			}
 		}
 		if usage != nil {
-			var tmp = metaData["METADATA"].(map[string]interface{})
+			var tmp = metaData["metadata"].(map[string]interface{})
 			var langsmithUsage = map[string]int{
 				"input_tokens":  usage.PromptTokens,
 				"output_tokens": usage.CompletionTokens,
 				"total_tokens":  usage.TotalTokens,
 			}
-			tmp["USAGE_METADATA"] = langsmithUsage
-			metaData["METADATA"] = tmp
+			tmp["usage_metadata"] = langsmithUsage
+			metaData["metadata"] = tmp
 		}
 		endTime := time.Now().UTC()
 		patch := &RunPatch{
