@@ -121,7 +121,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	}
 
 	newState := &LangsmithState{
-		TraceID:           state.TraceID,
+		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
 		Metadata:          run.Extra,
@@ -271,7 +271,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	}()
 
 	newState := &LangsmithState{
-		TraceID:           state.TraceID,
+		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
 		Metadata:          run.Extra,
