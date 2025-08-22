@@ -87,7 +87,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("marshal input error: %v, runinfo: %+v", err, info)
 		return ctx
 	}
-	var metaData = SafeDeepCopyMetadata(opts.Metadata)
+	var metaData = SafeDeepCopySyncMapMetadata(opts.Metadata)
 	if input != nil {
 		modelConf, _, _, _ := extractModelInput(convModelCallbackInput([]callbacks.CallbackInput{input}))
 		if modelConf != nil {
@@ -131,7 +131,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	if err != nil {
 		log.Printf("[langsmith] failed to create run: %v", err)
 	}
-
+	fmt.Printf("[langsmith] runinfo: %+v\n", run)
 	newState := &LangsmithState{
 		TraceID:           run.TraceID,
 		ParentRunID:       runID,
@@ -228,7 +228,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	} else {
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
-	var metaData = SafeDeepCopyMetadata(opts.Metadata)
+	var metaData = SafeDeepCopySyncMapMetadata(opts.Metadata)
 	// start goroutine to handle stream input
 	go func() {
 		defer func() {

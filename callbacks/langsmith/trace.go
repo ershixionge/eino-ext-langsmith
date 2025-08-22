@@ -18,6 +18,7 @@ package langsmith
 
 import (
 	"context"
+	"sync"
 
 	"golang.org/x/exp/slices"
 )
@@ -28,7 +29,7 @@ type traceOptions struct {
 	SessionName        string
 	ReferenceExampleID string
 	TraceID            string
-	Metadata           map[string]interface{}
+	Metadata           *sync.Map
 	ParentID           string
 	ParentDottedOrder  string
 	Tags               []string
@@ -79,14 +80,15 @@ func WithTraceID(id string) TraceOption {
 }
 
 // SetMetadata 设置 trace 的元数据, 覆盖写入
-func SetMetadata(metadata map[string]interface{}) TraceOption {
+func SetMetadata(metadata *sync.Map) TraceOption {
 	return func(o *traceOptions) {
 		if o.Metadata == nil {
 			o.Metadata = metadata
 		} else {
-			for k, v := range metadata {
-				o.Metadata[k] = v
-			}
+			metadata.Range(func(k, v interface{}) bool {
+				o.Metadata.Store(k, v)
+				return true
+			})
 		}
 	}
 }

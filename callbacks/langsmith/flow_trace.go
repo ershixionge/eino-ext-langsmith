@@ -33,6 +33,7 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 	if state == nil {
 		state = &LangsmithState{}
 	}
+	var newMetadata = SafeDeepCopySyncMapMetadata(opts.Metadata)
 	runID := ft.cfg.RunIDGen(ctx)
 	run := &Run{
 		ID:          runID,
@@ -41,7 +42,7 @@ func (ft *FlowTrace) StartSpan(ctx context.Context, name string, state *Langsmit
 		RunType:     RunTypeChain,
 		StartTime:   time.Now().UTC(),
 		SessionName: opts.SessionName,
-		Extra:       opts.Metadata,
+		Extra:       newMetadata,
 		Tags:        opts.Tags,
 	}
 	if state.TraceID == "" {

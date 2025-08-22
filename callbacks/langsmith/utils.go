@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components"
@@ -186,10 +187,40 @@ func SafeDeepCopyMetadata(original map[string]interface{}) map[string]interface{
 		return map[string]interface{}{"metadata": map[string]interface{}{}}
 	}
 
-	// 使用 json 序列化/反序列化实现深拷贝
-	data, _ := json.Marshal(original)
+	// 使用 json 序列化/反序列化实现并发安全的深拷贝
+	data, err := json.Marshal(original)
+	if err != nil {
+		// 如果序列化失败，返回一个新的空 map
+		return map[string]interface{}{"metadata": map[string]interface{}{}}
+	}
+
 	var copyData map[string]interface{}
-	_ = json.Unmarshal(data, &copyData)
+	if err := json.Unmarshal(data, &copyData); err != nil {
+		// 如果反序列化失败，返回一个新的空 map
+		return map[string]interface{}{"metadata": map[string]interface{}{}}
+	}
+
+	// 确保 metadata 字段存在
+	if copyData == nil {
+		copyData = make(map[string]interface{})
+	}
+	if _, ok := copyData["metadata"]; !ok {
+		copyData["metadata"] = make(map[string]interface{})
+	}
+
+	return copyData
+}
+
+func SafeDeepCopySyncMapMetadata(original *sync.Map) map[string]interface{} {
+	if original == nil {
+		return map[string]interface{}{"metadata": map[string]interface{}{}}
+	}
+
+	copyData := make(map[string]interface{})
+	original.Range(func(k, v interface{}) bool {
+		copyData[k.(string)] = v
+		return true
+	})
 
 	// 确保 metadata 字段存在
 	if copyData == nil {
