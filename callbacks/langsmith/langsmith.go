@@ -87,12 +87,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("marshal input error: %v, runinfo: %+v", err, info)
 		return ctx
 	}
-	var metaData = opts.Metadata
-	if len(metaData) == 0 {
-		metaData = map[string]interface{}{"metadata": map[string]interface{}{}}
-	} else if _, okk := metaData["metadata"]; !okk {
-		metaData["metadata"] = map[string]interface{}{}
-	}
+	var metaData = SafeDeepCopyMetadata(opts.Metadata)
 	if input != nil {
 		modelConf, _, _, _ := extractModelInput(convModelCallbackInput([]callbacks.CallbackInput{input}))
 		if modelConf != nil {
@@ -233,7 +228,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	} else {
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
-
+	var metaData = SafeDeepCopyMetadata(opts.Metadata)
 	// start goroutine to handle stream input
 	go func() {
 		defer func() {
@@ -261,12 +256,6 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			return
 		}
 
-		var metaData = opts.Metadata
-		if len(metaData) == 0 {
-			metaData = map[string]interface{}{"metadata": map[string]interface{}{}}
-		} else if _, okk := metaData["metadata"]; !okk {
-			metaData["metadata"] = map[string]interface{}{}
-		}
 		if extra != nil {
 			for k, v := range extra {
 				metaData[k] = v
@@ -317,7 +306,7 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		output.Close()
 		return ctx
 	}
-
+	var metaData = SafeDeepCopyMetadata(state.Metadata)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -342,12 +331,6 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		if err_ != nil {
 			log.Printf("extract stream model output error: %v, runinfo: %+v", err_, info)
 			return
-		}
-		var metaData = state.Metadata
-		if len(metaData) == 0 {
-			metaData = map[string]interface{}{"metadata": map[string]interface{}{}}
-		} else if _, okk := metaData["metadata"]; !okk {
-			metaData["metadata"] = map[string]interface{}{}
 		}
 		if extra != nil {
 			for k, v := range extra {

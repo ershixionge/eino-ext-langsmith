@@ -18,6 +18,7 @@ package langsmith
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/cloudwego/eino/callbacks"
@@ -178,4 +179,25 @@ func GetState(ctx context.Context) (context.Context, *LangsmithState) {
 	} else {
 		return ctx, nil
 	}
+}
+
+func SafeDeepCopyMetadata(original map[string]interface{}) map[string]interface{} {
+	if original == nil {
+		return map[string]interface{}{"metadata": map[string]interface{}{}}
+	}
+
+	// 使用 json 序列化/反序列化实现深拷贝
+	data, _ := json.Marshal(original)
+	var copyData map[string]interface{}
+	_ = json.Unmarshal(data, &copyData)
+
+	// 确保 metadata 字段存在
+	if copyData == nil {
+		copyData = make(map[string]interface{})
+	}
+	if _, ok := copyData["metadata"]; !ok {
+		copyData["metadata"] = make(map[string]interface{})
+	}
+
+	return copyData
 }
