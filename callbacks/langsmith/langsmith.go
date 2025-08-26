@@ -60,9 +60,11 @@ func NewLangsmithHandler(cfg *Config) (*CallbackHandler, error) {
 
 // LangsmithState maintains Langsmith call chain state
 type LangsmithState struct {
-	TraceID           string `json:"trace_id"`
-	ParentRunID       string `json:"parent_run_id"`
-	ParentDottedOrder string `json:"parent_dotted_order"`
+	TraceID           string                 `json:"trace_id"`
+	ParentRunID       string                 `json:"parent_run_id"`
+	ParentDottedOrder string                 `json:"parent_dotted_order"`
+	Metadata          map[string]interface{} `json:"metadata"`
+	Tags              []string               `json:"tags"`
 }
 
 type langsmithStateKey struct{}
@@ -85,6 +87,18 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("marshal input error: %v, runinfo: %+v", err, info)
 		return ctx
 	}
+	var metaData = SafeDeepCopySyncMapMetadata(opts.Metadata)
+	if input != nil {
+		modelConf, _, _, _ := extractModelInput(convModelCallbackInput([]callbacks.CallbackInput{input}))
+		if modelConf != nil {
+			var tmp = metaData["metadata"].(map[string]interface{})
+			tmp["ls_model_name"] = modelConf.Model
+			tmp["ls_max_tokens"] = modelConf.MaxTokens
+			tmp["model_conf"] = modelConf
+			metaData["metadata"] = tmp
+		}
+	}
+
 	run := &Run{
 		ID:          runID,
 		TraceID:     state.TraceID,
@@ -93,7 +107,8 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		StartTime:   time.Now().UTC(),
 		Inputs:      map[string]interface{}{"input": in},
 		SessionName: opts.SessionName,
-		Extra:       opts.Metadata,
+		Extra:       metaData,
+		Tags:        opts.Tags,
 	}
 	if state.TraceID == "" {
 		run.TraceID = runID
@@ -116,11 +131,13 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 	if err != nil {
 		log.Printf("[langsmith] failed to create run: %v", err)
 	}
-
+	fmt.Printf("[langsmith] runinfo: %+v\n", run)
 	newState := &LangsmithState{
-		TraceID:           state.TraceID,
+		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
+		Metadata:          run.Extra,
+		Tags:              run.Tags,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
@@ -200,6 +217,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		RunType:     runInfoToRunType(info),
 		StartTime:   time.Now().UTC(),
 		SessionName: opts.SessionName,
+		Tags:        opts.Tags,
 	}
 	if state.TraceID == "" {
 		run.TraceID = runID
@@ -210,7 +228,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	} else {
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
-
+	var metaData = SafeDeepCopySyncMapMetadata(opts.Metadata)
 	// start goroutine to handle stream input
 	go func() {
 		defer func() {
@@ -237,11 +255,18 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			log.Printf("extract stream model input error: %v, runinfo: %+v", err_, info)
 			return
 		}
-		if extra == nil {
-			extra = map[string]interface{}{}
+
+		if extra != nil {
+			for k, v := range extra {
+				metaData[k] = v
+			}
 		}
 		if modelConf != nil {
-			extra["model_conf"] = modelConf
+			var tmp = metaData["metadata"].(map[string]interface{})
+			tmp["ls_model_name"] = modelConf.Model
+			tmp["ls_max_tokens"] = modelConf.MaxTokens
+			tmp["model_conf"] = modelConf
+			metaData["metadata"] = tmp
 		}
 
 		if opts.ReferenceExampleID != "" {
@@ -252,7 +277,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		}
 
 		run.Inputs = map[string]interface{}{"stream_inputs": inMessage}
-		run.Extra = extra
+		run.Extra = metaData
 		err := c.cli.CreateRun(ctx, run)
 		if err != nil {
 			log.Printf("[langsmith] failed to create run for stream: %v", err)
@@ -260,9 +285,11 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 	}()
 
 	newState := &LangsmithState{
-		TraceID:           state.TraceID,
+		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
+		Metadata:          run.Extra,
+		Tags:              run.Tags,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
 }
@@ -279,7 +306,7 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		output.Close()
 		return ctx
 	}
-
+	var metaData = SafeDeepCopyMetadata(state.Metadata)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -305,17 +332,26 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			log.Printf("extract stream model output error: %v, runinfo: %+v", err_, info)
 			return
 		}
-		if extra == nil {
-			extra = map[string]interface{}{}
+		if extra != nil {
+			for k, v := range extra {
+				metaData[k] = v
+			}
 		}
 		if usage != nil {
-			extra["model_usage"] = usage
+			var tmp = metaData["metadata"].(map[string]interface{})
+			var langsmithUsage = map[string]int{
+				"input_tokens":  usage.PromptTokens,
+				"output_tokens": usage.CompletionTokens,
+				"total_tokens":  usage.TotalTokens,
+			}
+			tmp["usage_metadata"] = langsmithUsage
+			metaData["metadata"] = tmp
 		}
 		endTime := time.Now().UTC()
 		patch := &RunPatch{
 			EndTime: &endTime,
 			Outputs: map[string]interface{}{"stream_outputs": outMessage},
-			Extra:   extra,
+			Extra:   metaData,
 		}
 
 		// 使用后台 context

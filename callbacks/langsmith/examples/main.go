@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/cloudwego/eino-ext/callbacks/langsmith"
 	"github.com/cloudwego/eino/callbacks"
@@ -15,13 +16,13 @@ func main() {
 	// Create a langsmith handler
 	// In a real application, you would get the API key from environment variables or a config file.
 	cfg := &langsmith.Config{
-		APIKey: "your api key",
-		APIURL: "your api url",
+		APIKey: "xxx",
+		APIURL: "xxx",
 		RunIDGen: func(ctx context.Context) string { // optional. run id generator. default is uuid.NewString
 			return uuid.NewString()
 		},
 	}
-	// ft := langsmith.NewFlowTrace(cfg)
+	ft := langsmith.NewFlowTrace(cfg)
 	cbh, err := langsmith.NewLangsmithHandler(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -31,9 +32,22 @@ func main() {
 	callbacks.AppendGlobalHandlers(cbh)
 	// Set trace-level information using the context
 	ctx := context.Background()
+	var tmpMetadata sync.Map
+	tmpMetadata.Store("metadata", map[string]interface{}{
+		"cid": "cid_test",
+		"env": "env_test",
+	})
 	ctx = langsmith.SetTrace(ctx,
-		langsmith.WithSessionName("your session name"),
+		langsmith.WithSessionName(""),
+		langsmith.AddTag("cid_test"),
+		langsmith.AddTag("env_test"),
+		langsmith.SetMetadata(&tmpMetadata),
 	)
+
+	ctx, spanID, err := ft.StartSpan(ctx, "test", nil)
+	defer func() {
+		ft.FinishSpan(ctx, spanID)
+	}()
 
 	// Build and compile an eino graph
 	g := compose.NewGraph[string, string]()
@@ -54,6 +68,11 @@ func main() {
 		fmt.Println(err)
 	}
 	// Invoke the runner
+	ctx = langsmith.SetTrace(ctx,
+		langsmith.WithSessionName("test"),
+		langsmith.AddTag("env_test"),
+		langsmith.SetMetadata(&tmpMetadata),
+	)
 	result, err := runner.Invoke(ctx, "some input\n")
 	if err != nil {
 		fmt.Println(err)

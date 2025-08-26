@@ -62,6 +62,7 @@ type Run struct {
 	SessionName        string                 `json:"session_name,omitempty"`         // langsmith session name
 	ReferenceExampleID *string                `json:"reference_example_id,omitempty"` // ID of a reference example associated with the run. This is usually only present for evaluation runs.
 	DottedOrder        string                 `json:"dotted_order,omitempty"`         // Ordering string, hierarchical. Format: run_start_timeZrun_uuid.child_run_start_timeZchild_run_uuid...
+	Tags               []string               `json:"tags,omitempty"`                 // Tags or labels associated with the run.
 }
 
 // RunPatch update run when it is finished or failed, patch output or error msg.

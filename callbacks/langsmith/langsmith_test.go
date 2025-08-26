@@ -46,8 +46,7 @@ func (m *mockLangsmith) UpdateRun(ctx context.Context, runID string, patch *RunP
 // TestNewLangsmithHandler 测试构造函数
 func TestNewLangsmithHandler(t *testing.T) {
 	cfg := &Config{APIKey: "test-key", APIURL: "http://test"}
-	ft := NewFlowTrace(cfg)
-	h, err := NewLangsmithHandler(ft)
+	h, err := NewLangsmithHandler(cfg)
 	assert.NoError(t, err)
 	assert.NotNil(t, h)
 }
