@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/cloudwego/eino/callbacks"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/compose"
+	"github.com/cloudwego/eino/schema"
 	"github.com/ershixionge/eino-ext-langsmith/callbacks/langsmith"
 	"github.com/google/uuid"
 )
@@ -31,18 +35,37 @@ func main() {
 	callbacks.AppendGlobalHandlers(cbh)
 	// Set trace-level information using the context
 	ctx := context.Background()
-	var tmpMetadata = map[string]interface{}{
+	var tmpMetadata sync.Map
+	tmpMetadata.Store("metadata", map[string]interface{}{
 		"cid": "cid_test",
 		"env": "env_test",
-	}
+	})
 	ctx = langsmith.SetTrace(ctx,
-		langsmith.WithSessionName("test_xyy2"),
+		langsmith.WithSessionName(""),
 		langsmith.AddTag("cid_test"),
 		langsmith.AddTag("env_test"),
-		langsmith.SetMetadata(tmpMetadata),
+		langsmith.SetMetadata(&tmpMetadata),
 	)
+	var callbackInput = &model.CallbackInput{
+		Messages: []*schema.Message{{
+			Role:    schema.User,
+			Content: "你好",
+		}},
+		Tools: []*schema.ToolInfo{},
+		Config: &model.Config{
+			Model:       "tt",
+			MaxTokens:   0,
+			Temperature: 0,
+			TopP:        0,
+			Stop:        nil,
+		},
+	}
+	for i := 0; i < 100; i++ {
+		go cbh.OnStart(ctx, &callbacks.RunInfo{Component: "test", Name: "t"}, callbackInput)
+	}
+	time.Sleep(10 * time.Minute)
 
-	ctx, spanID, err := ft.StartSpan(ctx, "test_lq", nil)
+	ctx, spanID, err := ft.StartSpan(ctx, "test", nil)
 	defer func() {
 		ft.FinishSpan(ctx, spanID)
 	}()
@@ -67,11 +90,9 @@ func main() {
 	}
 	// Invoke the runner
 	ctx = langsmith.SetTrace(ctx,
-		langsmith.WithSessionName("test_xyy2"),
+		langsmith.WithSessionName("test"),
 		langsmith.AddTag("env_test"),
-		langsmith.SetMetadata(map[string]interface{}{
-			"lq": "test_lq",
-		}),
+		langsmith.SetMetadata(&tmpMetadata),
 	)
 	result, err := runner.Invoke(ctx, "some input\n")
 	if err != nil {
