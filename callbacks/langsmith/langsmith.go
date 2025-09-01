@@ -22,6 +22,7 @@ import (
 	"io"
 	"log"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -60,11 +61,11 @@ func NewLangsmithHandler(cfg *Config) (*CallbackHandler, error) {
 
 // LangsmithState maintains Langsmith call chain state
 type LangsmithState struct {
-	TraceID           string                 `json:"trace_id"`
-	ParentRunID       string                 `json:"parent_run_id"`
-	ParentDottedOrder string                 `json:"parent_dotted_order"`
-	Metadata          map[string]interface{} `json:"metadata"`
-	Tags              []string               `json:"tags"`
+	TraceID           string    `json:"trace_id"`
+	ParentRunID       string    `json:"parent_run_id"`
+	ParentDottedOrder string    `json:"parent_dotted_order"`
+	Metadata          *sync.Map `json:"metadata"`
+	Tags              []string  `json:"tags"`
 }
 
 type langsmithStateKey struct{}
@@ -132,11 +133,15 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("[langsmith] failed to create run: %v", err)
 	}
 	fmt.Printf("[langsmith] runinfo: %+v\n", run)
+	var newSyncMap = &sync.Map{}
+	for k, v := range run.Extra {
+		newSyncMap.Store(k, v)
+	}
 	newState := &LangsmithState{
 		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
-		Metadata:          run.Extra,
+		Metadata:          newSyncMap,
 		Tags:              run.Tags,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
@@ -229,6 +234,10 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		run.DottedOrder = fmt.Sprintf("%sZ%s", nowTime, runID)
 	}
 	var metaData = SafeDeepCopySyncMapMetadata(opts.Metadata)
+	var newSyncMap = &sync.Map{}
+	for k, v := range metaData {
+		newSyncMap.Store(k, v)
+	}
 	// start goroutine to handle stream input
 	go func() {
 		defer func() {
@@ -267,6 +276,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 			tmp["ls_max_tokens"] = modelConf.MaxTokens
 			tmp["model_conf"] = modelConf
 			metaData["metadata"] = tmp
+			newSyncMap.Store("metadata", tmp)
 		}
 
 		if opts.ReferenceExampleID != "" {
@@ -288,7 +298,7 @@ func (c *CallbackHandler) OnStartWithStreamInput(ctx context.Context, info *call
 		TraceID:           run.TraceID,
 		ParentRunID:       runID,
 		ParentDottedOrder: run.DottedOrder,
-		Metadata:          run.Extra,
+		Metadata:          newSyncMap,
 		Tags:              run.Tags,
 	}
 	return context.WithValue(ctx, langsmithStateKey{}, newState)
@@ -306,7 +316,7 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		output.Close()
 		return ctx
 	}
-	var metaData = SafeDeepCopyMetadata(state.Metadata)
+	var metaData = SafeDeepCopySyncMapMetadata(state.Metadata)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
