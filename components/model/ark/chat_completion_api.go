@@ -23,7 +23,7 @@ import (
 	"io"
 	"runtime/debug"
 
-	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/eino-contrib/jsonschema"
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime"
 	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	autils "github.com/volcengine/volcengine-go-sdk/service/arkruntime/utils"
@@ -61,10 +61,10 @@ type tool struct {
 }
 
 type functionDefinition struct {
-	Name        string           `json:"name"`
-	Description string           `json:"description,omitempty"`
-	Parameters  *openapi3.Schema `json:"parameters"`
-	Examples    []string         `json:"examples"`
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	Parameters  *jsonschema.Schema `json:"parameters"`
+	Examples    []string           `json:"examples"`
 }
 
 func (cm *completionAPIChatModel) Generate(ctx context.Context, in []*schema.Message, opts ...fmodel.Option) (
@@ -212,7 +212,7 @@ func (cm *completionAPIChatModel) Stream(ctx context.Context, in []*schema.Messa
 			}
 
 			sw.Close()
-			_ = cm.closeArkStreamReader(stream) // nolint: byted_returned_err_should_do_check
+			_ = cm.closeArkStreamReader(stream)
 
 		}()
 
@@ -479,7 +479,7 @@ func (cm *completionAPIChatModel) toTools(tls []*schema.ToolInfo) ([]tool, error
 			return nil, fmt.Errorf("tool info cannot be nil")
 		}
 
-		paramsJSONSchema, err := ti.ParamsOneOf.ToOpenAPIV3()
+		paramsJSONSchema, err := ti.ParamsOneOf.ToJSONSchema()
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert tool parameters to JSONSchema: %w", err)
 		}
@@ -622,7 +622,10 @@ func (cm *completionAPIChatModel) toEinoTokenUsage(usage *model.Usage) *schema.T
 	return &schema.TokenUsage{
 		CompletionTokens: usage.CompletionTokens,
 		PromptTokens:     usage.PromptTokens,
-		TotalTokens:      usage.TotalTokens,
+		PromptTokenDetails: schema.PromptTokenDetails{
+			CachedTokens: usage.PromptTokensDetails.CachedTokens,
+		},
+		TotalTokens: usage.TotalTokens,
 	}
 }
 
@@ -637,6 +640,9 @@ func (cm *completionAPIChatModel) toModelCallbackUsage(respMeta *schema.Response
 	return &fmodel.TokenUsage{
 		CompletionTokens: usage.CompletionTokens,
 		PromptTokens:     usage.PromptTokens,
-		TotalTokens:      usage.TotalTokens,
+		PromptTokenDetails: fmodel.PromptTokenDetails{
+			CachedTokens: usage.PromptTokenDetails.CachedTokens,
+		},
+		TotalTokens: usage.TotalTokens,
 	}
 }

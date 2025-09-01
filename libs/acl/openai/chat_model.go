@@ -25,11 +25,13 @@ import (
 	"runtime/debug"
 	"sort"
 
+	"github.com/eino-contrib/jsonschema"
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/meguminnnnnnnnn/go-openai"
+
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/meguminnnnnnnnn/go-openai"
 )
 
 type ChatCompletionResponseFormatType string
@@ -52,10 +54,12 @@ type ChatCompletionResponseFormat struct {
 }
 
 type ChatCompletionResponseFormatJSONSchema struct {
-	Name        string           `json:"name"`
-	Description string           `json:"description,omitempty"`
-	Schema      *openapi3.Schema `json:"schema"`
-	Strict      bool             `json:"strict"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// Deprecated: use JSONSchema instead.
+	Schema     *openapi3.Schema   `json:"-"`
+	JSONSchema *jsonschema.Schema `json:"-"`
+	Strict     bool               `json:"strict"`
 }
 
 type Config struct {
@@ -538,16 +542,10 @@ func (c *Client) Generate(ctx context.Context, in []*schema.Message, opts ...mod
 		return nil, fmt.Errorf("invalid response format: choice with index 0 not found")
 	}
 
-	usage := &model.TokenUsage{
-		PromptTokens:     resp.Usage.PromptTokens,
-		CompletionTokens: resp.Usage.CompletionTokens,
-		TotalTokens:      resp.Usage.TotalTokens,
-	}
-
 	callbacks.OnEnd(ctx, &model.CallbackOutput{
 		Message:    outMsg,
 		Config:     cbInput.Config,
-		TokenUsage: usage,
+		TokenUsage: toModelCallbackUsage(outMsg.ResponseMeta),
 	})
 
 	return outMsg, nil
@@ -798,26 +796,26 @@ func resolveStreamResponse(resp openai.ChatCompletionStreamResponse) (msg *schem
 }
 
 func toTools(tis []*schema.ToolInfo) ([]tool, error) {
-	var sortArrayFields func(*openapi3.Schema)
-	sortArrayFields = func(sc *openapi3.Schema) {
+	var sortArrayFields func(*jsonschema.Schema)
+	sortArrayFields = func(sc *jsonschema.Schema) {
 		if sc == nil {
 			return
 		}
+
 		switch sc.Type {
-		case openapi3.TypeObject:
+		case string(schema.Object):
 			if len(sc.Required) == 0 {
 				return
 			}
 
 			sort.Strings(sc.Required)
-
-			for _, v := range sc.Properties {
-				sortArrayFields(v.Value)
+			for pair := sc.Properties.Oldest(); pair != nil; pair = pair.Next() {
+				sortArrayFields(pair.Value)
 			}
 
-		case openapi3.TypeArray:
-			if sc.Items != nil && sc.Items.Value != nil {
-				sortArrayFields(sc.Items.Value)
+		case string(schema.Array):
+			if sc.Items != nil {
+				sortArrayFields(sc.Items)
 			}
 
 		default:
@@ -832,7 +830,7 @@ func toTools(tis []*schema.ToolInfo) ([]tool, error) {
 			return nil, fmt.Errorf("tool info cannot be nil in BindTools")
 		}
 
-		paramsJSONSchema, err := ti.ParamsOneOf.ToOpenAPIV3()
+		paramsJSONSchema, err := ti.ParamsOneOf.ToJSONSchema()
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert tool parameters to JSONSchema: %w", err)
 		}
@@ -855,10 +853,17 @@ func toEinoTokenUsage(usage *openai.Usage) *schema.TokenUsage {
 	if usage == nil {
 		return nil
 	}
+
+	promptTokenDetails := schema.PromptTokenDetails{}
+	if usage.PromptTokensDetails != nil {
+		promptTokenDetails.CachedTokens = usage.PromptTokensDetails.CachedTokens
+	}
+
 	return &schema.TokenUsage{
-		PromptTokens:     usage.PromptTokens,
-		CompletionTokens: usage.CompletionTokens,
-		TotalTokens:      usage.TotalTokens,
+		PromptTokens:       usage.PromptTokens,
+		PromptTokenDetails: promptTokenDetails,
+		CompletionTokens:   usage.CompletionTokens,
+		TotalTokens:        usage.TotalTokens,
 	}
 }
 
@@ -871,7 +876,10 @@ func toModelCallbackUsage(respMeta *schema.ResponseMeta) *model.TokenUsage {
 		return nil
 	}
 	return &model.TokenUsage{
-		PromptTokens:     usage.PromptTokens,
+		PromptTokens: usage.PromptTokens,
+		PromptTokenDetails: model.PromptTokenDetails{
+			CachedTokens: usage.PromptTokenDetails.CachedTokens,
+		},
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,
 	}
