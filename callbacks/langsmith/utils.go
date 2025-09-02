@@ -115,6 +115,9 @@ func extractModelOutput(outs []*model.CallbackOutput) (usage *model.TokenUsage, 
 }
 
 func concatMessageArray(mas [][]*schema.Message) ([]*schema.Message, error) {
+	if len(mas) == 0 {
+		return []*schema.Message{}, nil
+	}
 	arrayLen := len(mas[0])
 
 	ret := make([]*schema.Message, arrayLen)

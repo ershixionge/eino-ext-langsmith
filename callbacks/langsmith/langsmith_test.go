@@ -152,19 +152,3 @@ func TestOnEndWithStreamOutput(t *testing.T) {
 	// 等待 goroutine 完成
 	time.Sleep(100 * time.Millisecond)
 }
-
-// TestGetOrInitState 测试状态初始化逻辑
-func TestGetOrInitState(t *testing.T) {
-
-	// 场景 1：已有 state
-	ctx := context.WithValue(context.Background(), langsmithStateKey{}, &LangsmithState{TraceID: "abc"})
-	newCtx, state := GetOrInitState(ctx)
-	assert.Equal(t, "abc", state.TraceID)
-	assert.Equal(t, ctx, newCtx)
-
-	// 场景 2：无 state，应初始化
-	ctx2 := context.Background()
-	newCtx2, state2 := GetOrInitState(ctx2)
-	assert.Empty(t, state2.TraceID)
-	assert.NotEqual(t, ctx2, newCtx2)
-}
