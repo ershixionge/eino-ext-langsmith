@@ -61,11 +61,12 @@ func NewLangsmithHandler(cfg *Config) (*CallbackHandler, error) {
 
 // LangsmithState maintains Langsmith call chain state
 type LangsmithState struct {
-	TraceID           string    `json:"trace_id"`
-	ParentRunID       string    `json:"parent_run_id"`
-	ParentDottedOrder string    `json:"parent_dotted_order"`
-	Metadata          *sync.Map `json:"metadata"`
-	Tags              []string  `json:"tags"`
+	TraceID           string                 `json:"trace_id"`
+	ParentRunID       string                 `json:"parent_run_id"`
+	ParentDottedOrder string                 `json:"parent_dotted_order"`
+	Metadata          *sync.Map              `json:"metadata"`
+	Tags              []string               `json:"tags"`
+	MarshalMetadata   map[string]interface{} `json:"marshal_metadata"`
 }
 
 type langsmithStateKey struct{}

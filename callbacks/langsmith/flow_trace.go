@@ -1,9 +1,26 @@
+/*
+ * Copyright 2025 CloudWeGo Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package langsmith
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -91,6 +108,14 @@ func (ft *FlowTrace) SpanToString(ctx context.Context) (string, error) {
 	if state == nil {
 		return "", nil
 	}
+	var tmpMetadata = map[string]interface{}{}
+	if state.Metadata != nil {
+		state.Metadata.Range(func(key, value interface{}) bool {
+			tmpMetadata[key.(string)] = value
+			return true
+		})
+	}
+	state.MarshalMetadata = tmpMetadata
 	val, err := sonic.Marshal(state)
 	if err != nil {
 		return "", err
@@ -105,5 +130,15 @@ func (ft *FlowTrace) StringToSpan(val string) (*LangsmithState, error) {
 	}
 	state := &LangsmithState{}
 	err := sonic.Unmarshal([]byte(val), state)
-	return state, err
+	if err != nil {
+		return nil, err
+	}
+	if state.MarshalMetadata != nil {
+		var tmpMetadata sync.Map
+		for key, value := range state.MarshalMetadata {
+			tmpMetadata.Store(key, value)
+		}
+		state.Metadata = &tmpMetadata
+	}
+	return state, nil
 }
