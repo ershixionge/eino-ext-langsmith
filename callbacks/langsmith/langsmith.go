@@ -158,6 +158,27 @@ func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 		log.Printf("[langsmith] no state in context on OnEnd, runinfo: %+v", info)
 		return ctx
 	}
+	var metaData = SafeDeepCopySyncMapMetadata(state.Metadata)
+	usage, _, extra, err_ := extractModelOutput(convModelCallbackOutput([]callbacks.CallbackOutput{output}))
+	if err_ != nil {
+		log.Printf("extract stream model output error: %v, runinfo: %+v", err_, info)
+		return ctx
+	}
+	if extra != nil {
+		for k, v := range extra {
+			metaData[k] = v
+		}
+	}
+	if usage != nil {
+		var tmp = metaData["metadata"].(map[string]interface{})
+		var langsmithUsage = map[string]int{
+			"input_tokens":  usage.PromptTokens,
+			"output_tokens": usage.CompletionTokens,
+			"total_tokens":  usage.TotalTokens,
+		}
+		tmp["usage_metadata"] = langsmithUsage
+		metaData["metadata"] = tmp
+	}
 	out, err := sonic.MarshalString(output)
 	if err != nil {
 		log.Printf("marshal output error: %v, runinfo: %+v", err, info)
@@ -168,6 +189,7 @@ func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 	patch := &RunPatch{
 		EndTime: &endTime,
 		Outputs: map[string]interface{}{"output": out},
+		Extra:   metaData,
 	}
 
 	err = c.cli.UpdateRun(ctx, state.ParentRunID, patch)
