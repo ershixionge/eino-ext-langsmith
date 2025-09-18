@@ -197,7 +197,7 @@ func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 	endTime := time.Now().UTC()
 	patch := &RunPatch{
 		EndTime: &endTime,
-		Outputs: map[string]interface{}{"output": out},
+		Outputs: outStruct,
 		Extra:   metaData,
 	}
 
