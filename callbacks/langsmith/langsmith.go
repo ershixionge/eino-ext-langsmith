@@ -89,6 +89,11 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		log.Printf("marshal input error: %v, runinfo: %+v", err, info)
 		return ctx
 	}
+	var inStruct = map[string]interface{}{}
+	tmpErr := sonic.Unmarshal([]byte(in), &inStruct)
+	if tmpErr != nil {
+		inStruct["input"] = in
+	}
 	var metaData = SafeDeepCopySyncMapMetadata(opts.Metadata)
 	if input != nil {
 		modelConf, _, _, _ := extractModelInput(convModelCallbackInput([]callbacks.CallbackInput{input}))
@@ -107,7 +112,7 @@ func (c *CallbackHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, 
 		Name:        runInfoToName(info),
 		RunType:     runInfoToRunType(info),
 		StartTime:   time.Now().UTC(),
-		Inputs:      map[string]interface{}{"input": in},
+		Inputs:      inStruct,
 		SessionName: opts.SessionName,
 		Extra:       metaData,
 		Tags:        opts.Tags,
@@ -184,7 +189,11 @@ func (c *CallbackHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, ou
 		log.Printf("marshal output error: %v, runinfo: %+v", err, info)
 		return ctx
 	}
-
+	var outStruct = map[string]interface{}{}
+	tmpErr := sonic.Unmarshal([]byte(out), &outStruct)
+	if tmpErr != nil {
+		outStruct["output"] = out
+	}
 	endTime := time.Now().UTC()
 	patch := &RunPatch{
 		EndTime: &endTime,
@@ -380,10 +389,15 @@ func (c *CallbackHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			tmp["usage_metadata"] = langsmithUsage
 			metaData["metadata"] = tmp
 		}
+		var outStruct = map[string]interface{}{}
+		if outMessage != nil {
+			outStr, _ := sonic.Marshal(outMessage)
+			_ = sonic.Unmarshal(outStr, &outStruct)
+		}
 		endTime := time.Now().UTC()
 		patch := &RunPatch{
 			EndTime: &endTime,
-			Outputs: map[string]interface{}{"stream_outputs": outMessage},
+			Outputs: outStruct,
 			Extra:   metaData,
 		}
 
